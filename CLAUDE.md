@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Synapse - AI Content Repurposer
+# Scrappy - AI Content Repurposer
 
 ## Architecture Rules
 - We are using Next.js 15 (App Router), TypeScript, and Tailwind CSS.
