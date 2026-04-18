@@ -32,9 +32,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const [dbUser] = await db
-    .select({ credits: users.credits, name: users.name, avatarUrl: users.avatarUrl })
+    .select({
+      credits: users.credits,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      username: users.username,
+      persona: users.persona,
+    })
     .from(users)
     .where(eq(users.id, user.id));
+
+  if (dbUser && (!dbUser.username || !dbUser.persona)) {
+    redirect('/onboarding');
+  }
 
   return (
     <div className="flex h-screen bg-background">

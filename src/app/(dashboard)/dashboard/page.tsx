@@ -7,31 +7,34 @@ import {
   CheckCircle2,
   Loader2,
   Copy,
-  Hash,
   Mail,
   Edit3,
   Clock,
   BrushCleaning,
   CheckCircle,
+  ChevronDown,
+  ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
-import { SiX } from 'react-icons/si';
+import { SiHashnode, SiX } from 'react-icons/si';
 import { FaLinkedin } from 'react-icons/fa';
-import { TargetType } from '@/lib/prompts';
+import { ContentLength, Perspective, TargetType } from '@/lib/prompts';
 import ReactMarkdown from 'react-markdown';
 
 export default function DashboardPage() {
   const router = useRouter();
   const [sourceUrl, setSourceUrl] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [generatedContent, setGeneratedContent] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const [targetType, setTargetType] = useState<TargetType>('twitter_thread');
-  const [contentLength, setContentLength] = useState<'short' | 'long'>('short');
+  const [contentLength, setContentLength] = useState<ContentLength>('short');
+  const [perspective, setPerspective] = useState<Perspective>('creator');
 
   useEffect(() => {
     const savedUrl = localStorage.getItem('scrappy_current_url');
@@ -52,7 +55,7 @@ export default function DashboardPage() {
   useEffect(() => {
     localStorage.setItem('scrappy_current_url', sourceUrl);
     localStorage.setItem('scrappy_current_content', generatedContent);
-  }, [sourceUrl, generatedContent]);
+  }, [sourceUrl, generatedContent, targetType]);
 
   const handleGenerate = async () => {
     if (!sourceUrl) return;
@@ -73,6 +76,11 @@ export default function DashboardPage() {
       const scrapeData = await scrapeRes.json();
       if (!scrapeRes.ok) throw new Error(scrapeData.error);
 
+      localStorage.setItem('scrappy_current_transcript', scrapeData.transcript);
+      localStorage.setItem('scrappy_source_id', scrapeData.sourceId);
+      localStorage.setItem('scrappy_content_length', contentLength);
+      localStorage.setItem('scrappy_perspective', perspective);
+
       // Phase 2: Generation
       setStatus('2/2: Architecting the narrative...');
       const genRes = await fetch('/api/generate', {
@@ -80,8 +88,9 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sourceId: scrapeData.sourceId,
-          targetType: 'twitter_thread',
+          targetType,
           contentLength,
+          perspective,
         }),
       });
 
@@ -116,6 +125,16 @@ export default function DashboardPage() {
     }
   };
 
+  const targetOptions = [
+    { id: 'twitter_thread', label: 'Twitter', icon: SiX },
+    { id: 'linkedin_post', label: 'LinkedIn', icon: FaLinkedin },
+    { id: 'hashnode_article', label: 'Article', icon: SiHashnode },
+    { id: 'newsletter', label: 'Newsletter', icon: Mail },
+    { id: 'youtube_timestamps', label: 'Timestamps', icon: Clock },
+  ] as const;
+
+  const activeTarget = targetOptions.find((t) => t.id === targetType) || targetOptions[0];
+
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-24">
       <div className="mb-8 space-y-2">
@@ -134,22 +153,23 @@ export default function DashboardPage() {
       </div>
 
       {/* Configuration Panel */}
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-6 shadow-sm">
+      <div className="bg-card border border-border rounded-2xl p-5 md:p-6 space-y-6 shadow-sm">
+        {/* Source Link Input */}
         <div>
           <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 block font-mono">
             Source Material Link
           </label>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <Input
               value={sourceUrl}
               onChange={(e) => setSourceUrl(e.target.value)}
               placeholder="Paste YouTube URL, GitHub Repo, or Article Link..."
-              className="flex-1 bg-background h-10 rounded-xl"
+              className="flex-1 bg-background h-11 rounded-xl"
             />
             <Button
               onClick={handleGenerate}
               disabled={isGenerating || !sourceUrl}
-              className="bg-foreground text-background font-bold px-8 h-10 rounded-xl cursor-pointer hover:scale-105 active:scale-95 transition-all"
+              className="bg-foreground text-background font-bold px-8 h-11 rounded-xl cursor-pointer hover:scale-105 active:scale-95 transition-all w-full sm:w-auto"
             >
               {isGenerating ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -161,71 +181,120 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Configuration Options */}
-        <div className="flex justify-around">
+        {/* Configuration Options Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 pt-2">
+          {/* Detail Depth */}
           <div>
             <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 block font-mono">
               Detail Depth
             </label>
-            <div className="flex bg-muted/50 p-1 rounded-xl border border-border w-fit">
+            <div
+              className={`flex bg-muted/50 p-1 rounded-xl border border-border ${generatedContent ? 'opacity-60 pointer-events-none' : ''}`}
+            >
               <button
                 onClick={() => setContentLength('short')}
-                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${contentLength === 'short' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                disabled={!!generatedContent}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${contentLength === 'short' ? 'bg-background text-foreground shadow-sm border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Short Summary
               </button>
               <button
                 onClick={() => setContentLength('long')}
-                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${contentLength === 'long' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                disabled={!!generatedContent}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${contentLength === 'long' ? 'bg-background text-foreground shadow-sm border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Deep Dive
               </button>
             </div>
           </div>
 
-          <div className="flex justify-around">
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 block font-mono">
-                Target Format
-              </label>
-              <div className="flex bg-muted/50 p-1 rounded-xl w-fit gap-2">
-                <button
-                  onClick={() => setTargetType('twitter_thread')}
-                  className={`px-3 py-2 flex gap-1 items-center rounded-lg text-xs font-bold transition-all ${targetType === 'twitter_thread' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  <SiX className="w-3 h-3" />
-                  <span className="text-xs font-semibold">Twitter</span>
-                </button>
-                <button
-                  onClick={() => setTargetType('linkedin_post')}
-                  className={`px-3 py-2 flex gap-1 items-center rounded-lg text-xs font-bold transition-all ${targetType === 'linkedin_post' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  <FaLinkedin className="w-3 h-3" />
-                  <span className="text-xs font-semibold">LinkedIn</span>
-                </button>
-                <button
-                  onClick={() => setTargetType('hashnode_article')}
-                  className={`px-3 py-2 flex gap-1 items-center rounded-lg text-xs font-bold transition-all ${targetType === 'hashnode_article' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  <Hash className="w-3 h-3" />
-                  <span className="text-xs font-semibold">Article</span>
-                </button>
-                <button
-                  onClick={() => setTargetType('newsletter')}
-                  className={`px-3 py-2 flex gap-1 items-center rounded-lg text-xs font-bold transition-all ${targetType === 'newsletter' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  <Mail className="w-3 h-3" />
-                  <span className="text-xs font-semibold">Newsletter</span>
-                </button>
-                <button
-                  onClick={() => setTargetType('timestamps')}
-                  className={`px-3 py-2 flex gap-1 items-center rounded-lg text-xs font-bold transition-all ${targetType === 'timestamps' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  <Clock className="w-3 h-3" />
-                  <span className="text-xs font-semibold">Timestamps</span>
-                </button>
-              </div>
+          {/* Content Owner */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 block font-mono">
+              Content Owner
+            </label>
+            <div
+              className={`flex bg-muted/50 p-1 rounded-xl border border-border ${generatedContent ? 'opacity-60 pointer-events-none' : ''}`}
+            >
+              <button
+                onClick={() => setPerspective('creator')}
+                disabled={!!generatedContent}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${perspective === 'creator' ? 'bg-background text-foreground shadow-sm border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                My Content
+              </button>
+              <button
+                onClick={() => setPerspective('curator')}
+                disabled={!!generatedContent}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${perspective === 'curator' ? 'bg-background text-foreground shadow-sm border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                Curated
+              </button>
             </div>
+          </div>
+
+          {/* Target Format Dropdown */}
+          <div className="relative">
+            <label className="flex items-center justify-between text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 font-mono">
+              <span>Target Format</span>
+            </label>
+            {generatedContent ? (
+              <button
+                onClick={() => router.push('/editor')}
+                className="w-full flex items-center justify-between bg-muted/30 border border-border px-4 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors group"
+              >
+                <div className="flex items-center gap-2 text-muted-foreground opacity-70">
+                  <activeTarget.icon className="w-4 h-4" />
+                  {activeTarget.label}
+                </div>
+                <span className="text-xs text-blue-500 font-bold group-hover:underline flex items-center gap-1">
+                  Change in Workspace <ArrowRight className="w-3 h-3" />
+                </span>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="w-full flex items-center justify-between bg-muted/30 border border-border px-4 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <activeTarget.icon className="w-4 h-4 text-muted-foreground" />
+                    {activeTarget.label}
+                  </div>
+                  <ChevronDown
+                    className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
+                )}
+
+                {isDropdownOpen && (
+                  <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-background border border-border rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="p-1 flex flex-col">
+                      {targetOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          onClick={() => {
+                            setTargetType(option.id as TargetType);
+                            setIsDropdownOpen(false);
+                          }}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full text-left
+                            ${targetType === option.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}
+                          `}
+                        >
+                          <option.icon
+                            className={`w-4 h-4 ${targetType === option.id ? 'text-foreground' : ''}`}
+                          />
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -249,7 +318,7 @@ export default function DashboardPage() {
               <div className="flex gap-2 items-center bg-muted text-muted-foreground text-[10px] uppercase tracking-widest font-mono px-2 py-1 rounded-md">
                 <Sparkles className="w-3 h-3" />
                 <span className="text-xs font-bold tracking-tight uppercase font-mono mt-px">
-                  {targetType.replace('_', ' ')}
+                  {targetType.replace('_', ' ')} - ({contentLength})
                 </span>
               </div>
             </div>

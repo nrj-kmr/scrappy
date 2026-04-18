@@ -27,11 +27,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse the incoming JSON payload
     const body = await req.json();
     const { sourceUrl } = body;
 
-    // Guardrails: Validate the input
     if (!sourceUrl) {
       return NextResponse.json({ error: 'sourceUrl is required' }, { status: 400 });
     }
@@ -40,11 +38,30 @@ export async function POST(req: Request) {
     // Note: This returns an array of objects like { text: "hello", duration: 1.5, offset: 0 }
     const transcriptRaw = await YoutubeTranscript.fetchTranscript(sourceUrl);
 
-    // The Transformation: Combine the array into one massive string of text
-    const fullText = transcriptRaw.map((t) => t.text).join(' ');
+    // Helper function to convert milliseconds to [MM:SS] format
+    const formatOffset = (offsetMs: number) => {
+      const totalSeconds = Math.floor(offsetMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `[${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}]`;
+    };
 
-    // The Injection: Save it to our Postgres Database
-    // We use .returning() so Postgres hands us back the newly created row
+    let formattedTranscript = '';
+    let currentParagraph = '';
+
+    transcriptRaw.forEach((t, index) => {
+      if (index % 5 === 0) {
+        if (currentParagraph) {
+          formattedTranscript += currentParagraph.trim() + '\n\n';
+        }
+        currentParagraph = `${formatOffset(t.offset)} ${t.text} `;
+      } else {
+        currentParagraph += `${t.text} `;
+      }
+    });
+
+    if (currentParagraph) formattedTranscript += currentParagraph.trim();
+
     const [newSource] = await db
       .insert(sources)
       .values({
@@ -52,7 +69,7 @@ export async function POST(req: Request) {
         url: sourceUrl,
         type: 'youtube',
         title: 'Draft YouTube Video',
-        rawContent: fullText,
+        rawContent: formattedTranscript,
       })
       .returning();
 
@@ -61,6 +78,7 @@ export async function POST(req: Request) {
       success: true,
       message: 'Transcript saved successfully!',
       sourceId: newSource.id,
+      transcript: formattedTranscript,
     });
   } catch (error) {
     console.error('Scraping Error:', error);

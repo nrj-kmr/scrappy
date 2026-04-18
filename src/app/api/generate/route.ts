@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { sourceId, targetType, contentLength } = body;
+    const { sourceId, targetType, contentLength, perspective } = body;
 
     const [source] = await db
       .select()
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Source not found' }, { status: 404 });
     }
 
-    const systemPrompt = buildSystemPrompt(targetType, contentLength);
+    const systemPrompt = buildSystemPrompt(targetType, contentLength, perspective);
 
     // *** note: remove this substring part when moving to production
     const safeTranscript = source.rawContent.substring(0, 6000);

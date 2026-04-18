@@ -1,22 +1,76 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Play, RefreshCw, Copy, Sparkles, Hash, Check } from 'lucide-react';
-import { FaLinkedinIn } from 'react-icons/fa';
-import { SiX } from 'react-icons/si';
+import {
+  Play,
+  Copy,
+  Sparkles,
+  Check,
+  X,
+  ArrowRight,
+  Mail,
+  Clock,
+  Loader2,
+  ChevronDown,
+} from 'lucide-react';
+import { TargetType } from '@/lib/prompts';
+import { SiHashnode, SiX } from 'react-icons/si';
+import { FaLinkedin } from 'react-icons/fa';
 
 export default function EditorWorkspace() {
-  const [activePlatform, setActivePlatform] = useState<'twitter' | 'hashnode' | 'linkedin'>(
-    'twitter'
-  );
+  const [activePlatform, setActivePlatform] = useState<TargetType>('twitter_thread');
   const [content, setContent] = useState('');
+  const [transcript, setTranscript] = useState('');
   const [isCopied, setIsCopied] = useState(false);
+
+  const [isRefining, setIsRefining] = useState(false);
+  const [refinePrompt, setRefinePrompt] = useState('');
+  const [isRefiningLoading, setIsRefiningLoading] = useState(false);
+
+  const [sourceId, setSourceId] = useState<number | null>(null);
+  const [contentLength, setContentLength] = useState<string>('short');
+  const [perspective, setPerspective] = useState<string>('creator');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const savedContent = localStorage.getItem('scrappy_current_content');
-    if (savedContent) {
+    const savedTarget = localStorage.getItem('scrappy_current_target') as TargetType | null;
+    const savedTranscript = localStorage.getItem('scrappy_current_transcript');
+
+    const savedSource = localStorage.getItem('scrappy_source_id');
+    const savedLength = localStorage.getItem('scrappy_content_length');
+    const savedPersp = localStorage.getItem('scrappy_perspective');
+
+    if (savedContent) setTimeout(() => setContent(savedContent), 0);
+    if (savedTarget) setTimeout(() => setActivePlatform(savedTarget), 0);
+    if (savedTranscript) setTimeout(() => setTranscript(savedTranscript), 0);
+
+    if (savedSource) setTimeout(() => setSourceId(parseInt(savedSource)), 0);
+    if (savedLength) setTimeout(() => setContentLength(savedLength), 0);
+    if (savedPersp) setTimeout(() => setPerspective(savedPersp), 0);
+
+    if (savedSource) {
+      const sid = parseInt(savedSource);
+      setTimeout(() => setSourceId(sid), 0);
+
+      const cacheKey = `scrappy_drafts_${sid}`;
+      const cached = localStorage.getItem(cacheKey);
+      const parsedDrafts: Record<string, string> = cached ? JSON.parse(cached) : {};
+
+      if (savedTarget && savedContent && !parsedDrafts[savedTarget]) {
+        parsedDrafts[savedTarget] = savedContent;
+        localStorage.setItem(cacheKey, JSON.stringify(parsedDrafts));
+      }
+
       setTimeout(() => {
-        setContent(savedContent);
+        setDrafts(parsedDrafts);
+        if (savedTarget && parsedDrafts[savedTarget]) {
+          setContent(parsedDrafts[savedTarget]);
+        } else if (savedContent) {
+          setContent(savedContent);
+        }
       }, 0);
     }
   }, []);
@@ -25,6 +79,12 @@ export default function EditorWorkspace() {
     const newContent = e.target.value;
     setContent(newContent);
     localStorage.setItem('scrappy_current_content', newContent);
+
+    if (sourceId) {
+      const newDrafts = { ...drafts, [activePlatform]: newContent };
+      setDrafts(newDrafts);
+      localStorage.setItem(`scrappy_drafts_${sourceId}`, JSON.stringify(newDrafts));
+    }
   };
 
   const handleCopy = () => {
@@ -35,47 +95,140 @@ export default function EditorWorkspace() {
     }
   };
 
+  const handleConvertFormat = async (newFormat: TargetType) => {
+    setActivePlatform(newFormat);
+    setIsDropdownOpen(false);
+    localStorage.setItem('scrappy_current_target', newFormat);
+
+    if (drafts[newFormat]) {
+      setContent(drafts[newFormat]);
+      localStorage.setItem('scrappy_current_content', drafts[newFormat]);
+      return;
+    }
+
+    if (!sourceId) {
+      alert('Source context lost. Please generate a new link from the dashboard first.');
+      return;
+    }
+
+    setIsConverting(true);
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceId,
+          targetType: newFormat,
+          contentLength,
+          perspective,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error);
+
+      setContent(data.content);
+      localStorage.setItem('scrappy_current_content', data.content);
+
+      const newDrafts = { ...drafts, [newFormat]: data.content };
+      setDrafts(newDrafts);
+      localStorage.setItem(`scrappy_drafts_${sourceId}`, JSON.stringify(newDrafts));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Conversion failed';
+      alert(errorMessage);
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const handleRefineSubmit = async () => {
+    if (!refinePrompt || !content) {
+      setIsRefining(false);
+      return;
+    }
+
+    setIsRefiningLoading(true);
+    try {
+      const res = await fetch('/api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentContent: content, instructions: refinePrompt }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error);
+
+      setContent(data.content);
+      localStorage.setItem('scrappy_current_content', data.content);
+
+      if (sourceId) {
+        const newDrafts = { ...drafts, [activePlatform]: data.content };
+        setDrafts(newDrafts);
+        localStorage.setItem(`scrappy_drafts_${sourceId}`, JSON.stringify(newDrafts));
+      }
+
+      setRefinePrompt('');
+      setIsRefining(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Refine failed';
+      alert(errorMessage);
+    } finally {
+      setIsRefiningLoading(false);
+    }
+  };
+
+  const targetOptions = [
+    { id: 'twitter_thread', label: 'Twitter Thred', icon: SiX },
+    { id: 'linkedin_post', label: 'LinkedIn Post', icon: FaLinkedin },
+    { id: 'hashnode_article', label: 'Hashnode Article', icon: SiHashnode },
+    { id: 'newsletter', label: 'Newsletter', icon: Mail },
+    { id: 'youtube_timestamps', label: 'YT Timestamps', icon: Clock },
+  ] as const;
+
+  const activeTarget = targetOptions.find((t) => t.id === activePlatform) || targetOptions[0];
+
   return (
     <div className="flex h-[calc(100vh-8rem)] w-full border border-border rounded-2xl overflow-hidden bg-background shadow-sm">
       {/* Left Panel: The Raw Source */}
-      <section className="w-1/2 border-r border-border flex flex-col bg-muted/10 lg:flex">
-        {/* Panel Header */}
-        <div className="bg-muted/30 backdrop-blur-md px-6 py-3 flex items-center justify-between border-b border-border">
+      <section className="w-1/2 border-r border-border flex flex-col bg-muted/10  lg:flex">
+        {/* Panel Header (Added shrink-0 so it doesn't get squished by the text) */}
+        <div className="bg-muted/30 backdrop-blur-md px-6 py-3 flex items-center justify-between border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <Play className="w-4 h-4 text-muted-foreground" />
             <span className="font-mono text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
               Workspace Context
             </span>
           </div>
-          <button className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-            <RefreshCw className="w-3 h-3" />
-            Sync
-          </button>
         </div>
 
-        {/* Transcript Content (Scrollable) */}
-        {/* <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div className="max-w-2xl mx-auto font-mono text-sm leading-relaxed text-muted-foreground space-y-6">
-            <p className="text-foreground">
-              [00:00:12] Welcome back to the channel. Today we&apos;re diving deep into the architecture of modern LLMs and how context windows are evolving.
-            </p>
-            <p>
-              [00:00:45] The main bottleneck isn&apos;t the processing power itself, but how we manage the attention mechanism over long sequences of data. Think of it like a library where you can only have 10 books open on the table at once.
-            </p>
-            <p>
-              [00:01:20] But what if we could compress that knowledge? This is where the concept of semantic caching comes in. Instead of re-reading every page, we store the core concepts in a high-speed vector space.
-            </p>
-            <p className="bg-muted/50 p-4 border-l-2 border-primary rounded-r-lg text-foreground">
-              [00:02:05] Key takeaway: Efficiency in AI isn&apos;t just about faster chips. It&apos;s about smarter retrieval patterns. If you&apos;re building an app today, focus on the retrieval layer first.
-            </p>
-            <p className="opacity-50 italic">... transcribing remaining 12 minutes ...</p>
-          </div>
-        </div> */}
-
-        <div className="flex-1 flex items-center justify-center p-8 custom-scrollbar">
-          <p className="text-sm font-mono text-muted-foreground/50 text-center max-w-xs">
-            Source transcript syncing will be available in the next architectural update.
-          </p>
+        {/* The Raw Context Area (Added precise overflow-y-auto controls) */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-32">
+          {transcript ? (
+            <div className="font-mono text-sm leading-relaxed space-y-6">
+              {transcript.split('\n\n').map((paragraph, i) => {
+                const match = paragraph.match(/^(\[\d{2}:\d{2}\])/);
+                if (match) {
+                  return (
+                    <p key={i} className="text-foreground/90">
+                      <span className="text-blue-600 font-bold mr-2">{match[1]}</span>
+                      {paragraph.slice(match[1].length)}
+                    </p>
+                  );
+                }
+                return (
+                  <p key={i} className="text-muted-foreground/90">
+                    {paragraph}
+                  </p>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm font-mono text-muted-foreground/50 text-center max-w-xs">
+                No active transcript. Generate a narrative to sync source material.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -84,60 +237,108 @@ export default function EditorWorkspace() {
         <div className="px-6 py-2 flex justify-between items-center border-b border-border">
           <span className="font-headline font-bold text-sm text-foreground">Architect Output</span>
 
-          {/* Platform Segmented Control */}
-          <div className="px-6 flex justify-center">
-            <div className="bg-muted/50 p-1 rounded-lg border border-border flex gap-1">
-              <button
-                onClick={() => setActivePlatform('twitter')}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${activePlatform === 'twitter' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <SiX className="w-3 h-3" /> Thread
-              </button>
-              <button
-                onClick={() => setActivePlatform('hashnode')}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${activePlatform === 'hashnode' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Hash className="w-3 h-3" /> Article
-              </button>
-              <button
-                onClick={() => setActivePlatform('linkedin')}
-                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${activePlatform === 'linkedin' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <FaLinkedinIn className="w-3 h-3" /> Post
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-muted/50 p-1 rounded-lg border border-border flex gap-1">
+          <div className="relative">
             <button
-              onClick={() => setActivePlatform('twitter')}
-              className={`px-4 py-1 text-xs font-bold rounded-md transition-all ${activePlatform === 'twitter' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              disabled={isConverting}
+              className="bg-muted/50 px-3 py-1.5 flex items-center gap-2 rounded-lg border border-border text-[10px] uppercase tracking-widest font-bold text-foreground shadow-sm hover:bg-muted transition-colors disabled:opacity-50"
             >
-              Draft
+              {isConverting ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <activeTarget.icon className="w-3 h-3" />
+              )}
+              {isConverting ? 'Converting...' : activeTarget.label}
+              <ChevronDown
+                className={`w-3 h-3 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
+              />
             </button>
+
+            {isDropdownOpen && (
+              <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
+            )}
+
+            {isDropdownOpen && (
+              <div className="absolute top-[calc(100%+8px)] right-0 w-48 bg-background border border-border rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="p-1 flex flex-col">
+                  {targetOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => handleConvertFormat(option.id as TargetType)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full text-left
+                        ${activePlatform === option.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}
+                      `}
+                    >
+                      <option.icon
+                        className={`w-4 h-4 ${activePlatform === option.id ? 'text-foreground' : ''}`}
+                      />
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* The Live Text Area */}
-        <div className="flex-1 p-8 overflow-y-auto custom-scrollbar pb-32">
-          <textarea
-            value={content}
-            onChange={handleContentChange}
-            placeholder="Your engineered narrative will appear here. Start typing to edit..."
-            className="w-full h-full min-h-125 bg-transparent resize-none outline-none text-foreground font-sans text-lg leading-relaxed placeholder:text-muted-foreground/40"
-            spellCheck="false"
-          />
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar pb-32">
+          {isRefiningLoading ? (
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground animate-pulse gap-4">
+              <Sparkles className="w-8 h-8 text-blue-500" />
+              <p className="font-mono text-xs uppercase tracking-widest">
+                {isConverting ? 'Engineering new format...' : 'AI is refining your draft...'}
+              </p>
+            </div>
+          ) : (
+            <textarea
+              value={content}
+              onChange={handleContentChange}
+              placeholder="Your engineered narrative will appear here. Start typing to edit..."
+              className="w-full h-full min-h-125 bg-transparent resize-none outline-none text-foreground font-sans text-lg leading-relaxed placeholder:text-muted-foreground/40"
+              spellCheck="false"
+            />
+          )}
         </div>
 
+        {/* Hidden Input Field that reveals when "Refine AI" is clicked */}
+        {isRefining && (
+          <div className="flex items-center gap-2 p-1  border border-border">
+            <input
+              autoFocus
+              value={refinePrompt}
+              onChange={(e) => setRefinePrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRefineSubmit()}
+              placeholder="E.g., 'Make it punchier', 'Add more emojis'..."
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none px-2 py-2"
+              disabled={isRefiningLoading}
+            />
+            <button
+              onClick={() => setIsRefining(false)}
+              className="p-1 hover:bg-muted rounded-md text-muted-foreground mr-2"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Floating Action Bar */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-background/80 backdrop-blur-xl border border-border p-2 rounded-2xl shadow-2xl flex gap-2">
-          <button className="flex-1 bg-muted hover:bg-muted/80 text-foreground py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors font-semibold text-sm">
-            <Sparkles className="w-4 h-4 text-blue-500" />
-            Refine AI
+        <div className="flex gap-4 p-4">
+          <button
+            onClick={() => (isRefining ? handleRefineSubmit() : setIsRefining(true))}
+            disabled={isRefiningLoading || isConverting}
+            className="flex-1 bg-muted hover:bg-muted/80 text-foreground py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors font-semibold text-sm disabled:opacity-50"
+          >
+            {isRefining ? (
+              <ArrowRight className="w-4 h-4 text-blue-500" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-blue-500" />
+            )}
+            {isRefining ? 'Submit Edit' : 'Refine AI'}
           </button>
           <button
             onClick={handleCopy}
-            className="flex-1 bg-foreground text-background hover:opacity-90 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors font-bold text-sm shadow-md"
+            className="flex-1 bg-foreground/80 text-background hover:opacity-90 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors font-bold text-sm shadow-md"
           >
             {isCopied ? (
               <Check className="w-4 h-4 text-emerald-400" />

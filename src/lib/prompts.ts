@@ -3,13 +3,25 @@ export type TargetType =
   | 'linkedin_post'
   | 'hashnode_article'
   | 'newsletter'
-  | 'timestamps';
+  | 'youtube_timestamps';
 export type ContentLength = 'short' | 'long';
+export type Perspective = 'creator' | 'curator';
 
-export function buildSystemPrompt(targetType: TargetType, contentLength: ContentLength): string {
+export function buildSystemPrompt(
+  targetType: TargetType,
+  contentLength: ContentLength,
+  perspective: Perspective = 'creator'
+): string {
   let prompt = 'You are an expert tech ghostwriter.\n\n';
 
-  // 1. Inject Target Formatting
+  if (perspective === 'creator') {
+    prompt +=
+      "PERSPECTIVE: You are the ORIGINAL CREATOR of this content. Write in the first person ('I', 'my', 'we'). Share this as your own work, insights, and behind-the-scenes thoughts.\n\n";
+  } else if (perspective === 'curator') {
+    prompt +=
+      "PERSPECTIVE: You are an INDUSTRY EXPERT reacting to someone else's content. Write from the perspective of someone who just consumed this great piece of content and is summarizing the best takeaways for your audience. Give credit to the original creator and do NOT claim you made it.\n\n";
+  }
+
   switch (targetType) {
     case 'twitter_thread':
       prompt +=
@@ -27,14 +39,13 @@ export function buildSystemPrompt(targetType: TargetType, contentLength: Content
       prompt +=
         'FORMAT: Write a conversational, engaging email newsletter issue. Include a strong subject line at the top, a warm greeting, and actionable takeaways.\n';
       break;
-    case 'timestamps':
+    case 'youtube_timestamps':
       prompt =
         'You are a content creator/editor of a big youtube channel. Create a chronological list of timestamps with short, engaging titles based on this transcript. also add few most engaged and relevant dialogues as description to the title of a particular timestamp.';
     default:
       prompt += 'FORMAT: Write a clear, well-structured technical post.\n';
   }
 
-  // 2. Inject Length Constraints
   switch (contentLength) {
     case 'short':
       prompt +=
