@@ -18,6 +18,8 @@ import {
 import { SiX, SiYoutube, SiGithub, SiHashnode } from 'react-icons/si';
 import { FaLinkedinIn } from 'react-icons/fa';
 import { Button } from '@/components/ui/button';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/utils/supabase/client';
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
@@ -37,6 +39,15 @@ const itemVariants: Variants = {
 };
 
 export default function LandingPage() {
+  const [authRoute, setAuthRoute] = useState('/login');
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setAuthRoute('/dashboard');
+    });
+  }, [supabase.auth]);
+
   return (
     <div className="w-full relative overflow-hidden">
       {/* Background Grid & Glow */}
@@ -103,7 +114,7 @@ export default function LandingPage() {
             size="lg"
             className="h-12 px-8 rounded-xl font-bold text-sm bg-foreground text-background hover:bg-foreground/90 shadow-sm hover:scale-105 active:scale-95 transition-all duration-200"
           >
-            <Link href="/login">
+            <Link href={authRoute}>
               Initialize Engine <ArrowRight className="w-4 h-4 ml-2" />
             </Link>
           </Button>
@@ -314,7 +325,7 @@ export default function LandingPage() {
                   Ready to dominate the dev feed?
                 </h3>
                 <Link
-                  href="/login"
+                  href={authRoute}
                   className="inline-flex items-center gap-2 px-8 py-3 bg-background text-foreground rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-transform"
                 >
                   Start Engineering Your Voice <ArrowRight className="w-4 h-4" />
@@ -412,7 +423,7 @@ export default function LandingPage() {
                 variant="outline"
                 className="w-full h-12 rounded-xl font-bold bg-background hover:bg-muted text-foreground"
               >
-                <Link href="/login">Initialize Free</Link>
+                <Link href={authRoute}>Initialize Free</Link>
               </Button>
             </div>
 
@@ -440,9 +451,9 @@ export default function LandingPage() {
               </ul>
               <Button
                 asChild
-                className="w-full h-12 rounded-xl font-bold bg-background text-foreground hover:bg-background/90"
+                className="w-full h-12 rounded-xl font-bold bg-background text-foreground hover:text-background hover:bg-accent-background/80"
               >
-                <Link href="/login">Upgrade to Architect</Link>
+                <Link href={authRoute}>Upgrade to Architect</Link>
               </Button>
             </div>
           </div>
@@ -461,7 +472,7 @@ export default function LandingPage() {
             size="lg"
             className="h-14 px-10 rounded-xl font-bold text-base bg-foreground text-background hover:scale-105 transition-all"
           >
-            <Link href="/login">
+            <Link href={authRoute}>
               Start Engineering Your Voice <ArrowRight className="w-5 h-5 ml-2" />
             </Link>
           </Button>
