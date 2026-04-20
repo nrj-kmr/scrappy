@@ -1,5 +1,4 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { getAuthUser } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -11,66 +10,12 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login?error=No_code_provided', request.url));
   }
 
-  // if (code) {
-  //   const cookieStore = await cookies();
-  //   const supabase = createServerClient(
-  //     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  //     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  //     {
-  //       cookies: {
-  //         getAll() {
-  //           return cookieStore.getAll();
-  //         },
-  //         setAll(cookiesToSet) {
-  //           try {
-  //             cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
-  //           } catch {
-  //             // The `setAll` method was called from a Server Component.
-  //             // This can be ignored if you have middleware refreshing user sessions.
-  //           }
-  //         },
-  //       },
-  //     }
-  //   );
-
-  //   const {error} = await supabase.auth.exchangeCodeForSession(code);
-
-  //   if(!error){
-  //     return NextResponse.redirect(`${origin}${next}`);
-  //   }
-  // }
-
-  // return NextResponse.redirect(`${origin}/login?error=Could not authenticate user`);
-
   try {
-    const cookieStore = await cookies();
-
-    // Check if env vars are actually loaded
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       throw new Error('Supabase Environment Variables are missing.');
     }
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              );
-            } catch (error) {
-              console.warn('Cookie setting warning:', error);
-            }
-          },
-        },
-      }
-    );
-
+    const { supabase } = await getAuthUser();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {

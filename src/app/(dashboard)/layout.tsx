@@ -2,30 +2,13 @@ import { Sidebar } from '@/components/layouts/Sidebar';
 import { TopNav } from '@/components/layouts/TopNav';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { createServerClient } from '@supabase/ssr';
+import { getAuthUser } from '@/utils/supabase/server';
 import { eq } from 'drizzle-orm';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import React from 'react';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-      },
-    }
-  );
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const { user, error } = await getAuthUser();
 
   if (error || !user) {
     redirect('/login');

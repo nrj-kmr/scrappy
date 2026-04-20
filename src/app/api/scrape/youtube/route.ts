@@ -2,27 +2,11 @@ import { NextResponse } from 'next/server';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { db } from '@/db/index';
 import { sources } from '@/db/schema';
-import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
+import { getAuthUser } from '@/utils/supabase/server';
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { user } = await getAuthUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

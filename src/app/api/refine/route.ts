@@ -1,30 +1,14 @@
 import { db } from '@/db';
 import { users } from '@/db/schema';
+import { getAuthUser } from '@/utils/supabase/server';
 import { groq } from '@ai-sdk/groq';
-import { createServerClient } from '@supabase/ssr';
 import { generateText } from 'ai';
 import { eq } from 'drizzle-orm';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { user } = await getAuthUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const [dbUser] = await db

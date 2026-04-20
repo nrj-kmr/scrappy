@@ -1,28 +1,12 @@
 import Link from 'next/link';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { createServerClient } from '@supabase/ssr';
 import { eq } from 'drizzle-orm';
-import { cookies } from 'next/headers';
 import { MarketingNav } from '@/components/layouts/MarketingNav';
+import { getAuthUser } from '@/utils/supabase/server';
 
 export default async function MarketingLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-      },
-    }
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getAuthUser();
   let dbUser = null;
 
   if (user) {
